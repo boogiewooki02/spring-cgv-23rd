@@ -11,8 +11,11 @@ import lombok.NoArgsConstructor;
 @Getter
 @NoArgsConstructor(access = lombok.AccessLevel.PROTECTED)
 @Table(
+        indexes = {
+                @Index(name = "idx_reserved_seat_reservation_id", columnList = "res_id")
+        },
         uniqueConstraints = {
-                @UniqueConstraint(name = "uk_reserved_seat_per_schedule", columnNames = {"seat_row", "seat_col", "schedule_id"})
+                @UniqueConstraint(name = "uk_reserved_seat_per_schedule", columnNames = {"schedule_id", "seat_row", "seat_col"})
         }
 )
 public class ReservedSeat extends BaseEntity {

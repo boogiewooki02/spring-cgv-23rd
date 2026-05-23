@@ -16,6 +16,9 @@ import java.time.LocalDateTime;
 @Entity
 @Getter
 @NoArgsConstructor(access = lombok.AccessLevel.PROTECTED)
+@Table(indexes = {
+        @Index(name = "idx_reservation_status_expires_at", columnList = "status, expires_at")
+})
 public class Reservation extends BaseEntity {
 
     @Id
@@ -27,7 +30,7 @@ public class Reservation extends BaseEntity {
     @Column(nullable = false)
     private ReservationStatus status; // BOOKED, CANCELED
 
-    @Column(nullable = false)
+    @Column(name = "expires_at", nullable = false)
     private LocalDateTime expiresAt;
 
     @ManyToOne(fetch = FetchType.LAZY)

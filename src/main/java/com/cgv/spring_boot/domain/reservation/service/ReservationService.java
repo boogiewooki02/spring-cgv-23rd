@@ -1,6 +1,8 @@
 package com.cgv.spring_boot.domain.reservation.service;
 
 import com.cgv.spring_boot.domain.payment.dto.response.PaymentResponse;
+import com.cgv.spring_boot.domain.payment.dto.PaymentCancelResult;
+import com.cgv.spring_boot.domain.payment.dto.PaymentReadyResult;
 import com.cgv.spring_boot.domain.payment.service.PaymentService;
 import com.cgv.spring_boot.domain.reservation.dto.ReservationRequest;
 import com.cgv.spring_boot.domain.reservation.exception.ReservationErrorCode;
@@ -22,7 +24,9 @@ import lombok.extern.slf4j.Slf4j;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -39,6 +43,7 @@ public class ReservationService {
     private final UserRepository userRepository;
     private final ReservedSeatRepository reservedSeatRepository;
     private final PaymentService paymentService;
+    private final TransactionTemplate transactionTemplate;
 
     /**
      * 예매 좌석 선점
@@ -117,8 +122,21 @@ public class ReservationService {
     /**
      * 예매 결제 및 확정
      */
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public PaymentResponse pay(Long userId, Long reservationId) {
+        PaymentReadyResult payment = transactionTemplate.execute(status -> preparePayment(userId, reservationId));
+
+        try {
+            PaymentResponse response = paymentService.requestPayment(payment);
+            transactionTemplate.executeWithoutResult(status -> completePayment(userId, payment, response));
+            return response;
+        } catch (BusinessException e) {
+            transactionTemplate.executeWithoutResult(status -> paymentService.markPaymentFailed(payment.paymentPk(), e));
+            throw e;
+        }
+    }
+
+    private PaymentReadyResult preparePayment(Long userId, Long reservationId) {
         Reservation reservation = getOwnedReservation(userId, reservationId);
         validateReservationPayable(reservation);
 
@@ -128,11 +146,16 @@ public class ReservationService {
         String orderName = schedule.getMovie().getTitle() + " 예매";
         String customData = "{\"reservationId\":" + reservationId + ",\"seatCount\":" + seatCount + "}";
 
-        PaymentResponse response = paymentService.payReservation(reservation, totalAmount, orderName, customData);
+        return paymentService.createReadyPayment(reservation, totalAmount, orderName, customData);
+    }
+
+    private void completePayment(Long userId, PaymentReadyResult payment, PaymentResponse response) {
+        Reservation reservation = reservationRepository.findById(payment.reservationId())
+                .orElseThrow(() -> new BusinessException(ReservationErrorCode.RESERVATION_NOT_FOUND));
+        paymentService.markPaymentPaid(payment.paymentPk(), response);
         reservation.confirm();
         log.info("AUDIT reservation paid. userId={}, reservationId={}, paymentId={}, totalAmount={}",
-                userId, reservationId, response.paymentId(), totalAmount);
-        return response;
+                userId, payment.reservationId(), response.paymentId(), payment.totalAmount());
     }
 
     /** 결제 가능 예약 검증 */
@@ -154,14 +177,37 @@ public class ReservationService {
     /**
      * 예매 취소
      */
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void cancel(Long userId, Long reservationId) {
-        Reservation reservation = getOwnedReservation(userId, reservationId);
-        reservation.cancel();
-        paymentService.cancelReservationPayment(reservation);
+        PaymentCancelResult payment = transactionTemplate.execute(status -> prepareCancel(userId, reservationId));
 
+        if (payment != null) {
+            paymentService.requestPaymentCancel(payment);
+            transactionTemplate.executeWithoutResult(status -> completeCancel(userId, reservationId, payment));
+        }
+    }
+
+    private PaymentCancelResult prepareCancel(Long userId, Long reservationId) {
+        Reservation reservation = getOwnedReservation(userId, reservationId);
+        PaymentCancelResult payment = paymentService.getPaidPaymentForCancel(reservation);
+
+        if (payment == null) {
+            cancelReservation(userId, reservation);
+        }
+
+        return payment;
+    }
+
+    private void completeCancel(Long userId, Long reservationId, PaymentCancelResult payment) {
+        Reservation reservation = getOwnedReservation(userId, reservationId);
+        paymentService.markPaymentCancelled(payment.paymentPk());
+        cancelReservation(userId, reservation);
+    }
+
+    private void cancelReservation(Long userId, Reservation reservation) {
+        reservation.cancel();
         reservedSeatRepository.deleteByReservation(reservation);
-        log.info("AUDIT reservation cancelled. userId={}, reservationId={}", userId, reservationId);
+        log.info("AUDIT reservation cancelled. userId={}, reservationId={}", userId, reservation.getId());
     }
 
     /** 본인 예약 조회 */

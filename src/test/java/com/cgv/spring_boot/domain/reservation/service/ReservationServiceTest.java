@@ -2,11 +2,12 @@ package com.cgv.spring_boot.domain.reservation.service;
 
 import com.cgv.spring_boot.domain.reservation.dto.ReservationRequest;
 import com.cgv.spring_boot.domain.reservation.entity.Reservation;
-import com.cgv.spring_boot.domain.reservation.entity.ReservedSeat;
 import com.cgv.spring_boot.domain.reservation.repository.ReservationRepository;
 import com.cgv.spring_boot.domain.reservation.repository.ReservedSeatRepository;
 import com.cgv.spring_boot.domain.schedule.entity.Schedule;
 import com.cgv.spring_boot.domain.schedule.repository.ScheduleRepository;
+import com.cgv.spring_boot.domain.theater.entity.Hall;
+import com.cgv.spring_boot.domain.theater.entity.HallType;
 import com.cgv.spring_boot.domain.user.entity.User;
 import com.cgv.spring_boot.domain.user.repository.UserRepository;
 import com.cgv.spring_boot.domain.reservation.exception.ReservationErrorCode;
@@ -48,12 +49,21 @@ class ReservationServiceTest {
 
         User user = mock(User.class);
         Schedule schedule = mock(Schedule.class);
+        Hall hall = mock(Hall.class);
+        HallType hallType = HallType.builder()
+                .typeName("일반관")
+                .rowCount(10)
+                .colCount(10)
+                .build();
         Reservation reservation = Reservation.builder().build();
 
         given(userRepository.findById(userId)).willReturn(Optional.of(user));
         given(scheduleRepository.findById(request.scheduleId())).willReturn(Optional.of(schedule));
-        given(reservedSeatRepository.findAllByScheduleAndRowsAndCols(anyLong(), anyList(), anyList()))
-                .willReturn(List.of());
+        given(schedule.getId()).willReturn(request.scheduleId());
+        given(schedule.getHall()).willReturn(hall);
+        given(hall.getHallType()).willReturn(hallType);
+        given(reservedSeatRepository.existsByScheduleIdAndSeatRowAndSeatCol(anyLong(), anyString(), anyInt()))
+                .willReturn(false);
         given(reservationRepository.save(any(Reservation.class))).willReturn(reservation);
 
         // when
@@ -61,7 +71,7 @@ class ReservationServiceTest {
 
         // then
         verify(reservationRepository, times(1)).save(any(Reservation.class));
-        verify(reservedSeatRepository, times(1)).saveAll(anyList());
+        verify(reservedSeatRepository, times(1)).saveAllAndFlush(anyList());
     }
 
     @Test
@@ -70,12 +80,21 @@ class ReservationServiceTest {
         // given
         Long userId = 1L;
         ReservationRequest request = new ReservationRequest(10L, List.of(new ReservationRequest.SeatRequest("A", 1)));
+        Schedule schedule = mock(Schedule.class);
+        Hall hall = mock(Hall.class);
+        HallType hallType = HallType.builder()
+                .typeName("일반관")
+                .rowCount(10)
+                .colCount(10)
+                .build();
 
         given(userRepository.findById(userId)).willReturn(Optional.of(mock(User.class)));
-        given(scheduleRepository.findById(anyLong())).willReturn(Optional.of(mock(Schedule.class)));
-
-        given(reservedSeatRepository.findAllByScheduleAndRowsAndCols(anyLong(), anyList(), anyList()))
-                .willReturn(List.of(mock(ReservedSeat.class)));
+        given(scheduleRepository.findById(anyLong())).willReturn(Optional.of(schedule));
+        given(schedule.getId()).willReturn(request.scheduleId());
+        given(schedule.getHall()).willReturn(hall);
+        given(hall.getHallType()).willReturn(hallType);
+        given(reservedSeatRepository.existsByScheduleIdAndSeatRowAndSeatCol(anyLong(), anyString(), anyInt()))
+                .willReturn(true);
 
         // when(then)
         assertThatThrownBy(() -> reservationService.reserve(userId, request))

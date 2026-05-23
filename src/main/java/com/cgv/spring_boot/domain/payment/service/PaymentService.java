@@ -1,6 +1,8 @@
 package com.cgv.spring_boot.domain.payment.service;
 
 import com.cgv.spring_boot.domain.payment.dto.request.PaymentCreateRequest;
+import com.cgv.spring_boot.domain.payment.dto.PaymentCancelResult;
+import com.cgv.spring_boot.domain.payment.dto.PaymentReadyResult;
 import com.cgv.spring_boot.domain.payment.dto.response.PaymentResponse;
 import com.cgv.spring_boot.domain.payment.entity.Payment;
 import com.cgv.spring_boot.domain.payment.entity.PaymentStatus;
@@ -25,7 +27,7 @@ public class PaymentService {
     private final PaymentIdGenerator paymentIdGenerator;
 
     @Transactional
-    public PaymentResponse payReservation(Reservation reservation, int totalAmount, String orderName, String customData) {
+    public PaymentReadyResult createReadyPayment(Reservation reservation, int totalAmount, String orderName, String customData) {
         if (paymentRepository.existsByReservationId(reservation.getId())) {
             log.warn("payment rejected. reservationId={}, reason=payment_already_exists", reservation.getId());
             throw new BusinessException(PaymentErrorCode.PAYMENT_ALREADY_EXISTS);
@@ -38,37 +40,67 @@ public class PaymentService {
                 Payment.createReady(reservation, paymentId, orderName, totalAmount, DEFAULT_CURRENCY, customData)
         );
 
-        try {
-            PaymentResponse response = portOnePaymentClient.instantPay(paymentId, new PaymentCreateRequest(
-                    orderName,
-                    totalAmount,
-                    DEFAULT_CURRENCY,
-                    customData
-            ));
-            payment.markPaid(response.pgProvider(), response.paidAt());
-            log.info("AUDIT payment succeeded. reservationId={}, paymentId={}, provider={}",
-                    reservation.getId(), response.paymentId(), response.pgProvider());
-            return response;
-        } catch (BusinessException e) {
-            payment.markFailed();
-            log.warn("AUDIT payment failed. reservationId={}, paymentId={}, reason={}",
-                    reservation.getId(), paymentId, e.getErrorCode().getMessage());
-            throw e;
-        }
+        return new PaymentReadyResult(
+                payment.getId(),
+                payment.getReservation().getId(),
+                payment.getPaymentId(),
+                payment.getOrderName(),
+                payment.getTotalAmount(),
+                payment.getCurrency(),
+                payment.getCustomData()
+        );
+    }
+
+    public PaymentResponse requestPayment(PaymentReadyResult payment) {
+        return portOnePaymentClient.instantPay(payment.paymentId(), new PaymentCreateRequest(
+                payment.orderName(),
+                payment.totalAmount(),
+                payment.currency(),
+                payment.customData()
+        ));
     }
 
     @Transactional
-    public void cancelReservationPayment(Reservation reservation) {
+    public void markPaymentPaid(Long paymentPk, PaymentResponse response) {
+        Payment payment = paymentRepository.findById(paymentPk)
+                .orElseThrow(() -> new BusinessException(PaymentErrorCode.PAYMENT_NOT_FOUND));
+        payment.markPaid(response.pgProvider(), response.paidAt());
+        log.info("AUDIT payment succeeded. reservationId={}, paymentId={}, provider={}",
+                payment.getReservation().getId(), response.paymentId(), response.pgProvider());
+    }
+
+    @Transactional
+    public void markPaymentFailed(Long paymentPk, BusinessException e) {
+        Payment payment = paymentRepository.findById(paymentPk)
+                .orElseThrow(() -> new BusinessException(PaymentErrorCode.PAYMENT_NOT_FOUND));
+        payment.markFailed();
+        log.warn("AUDIT payment failed. reservationId={}, paymentId={}, reason={}",
+                payment.getReservation().getId(), payment.getPaymentId(), e.getErrorCode().getMessage());
+    }
+
+    @Transactional
+    public PaymentCancelResult getPaidPaymentForCancel(Reservation reservation) {
         Payment payment = paymentRepository.findByReservationId(reservation.getId())
                 .orElse(null);
 
         if (payment == null || payment.getStatus() != PaymentStatus.PAID) {
-            return;
+            return null;
         }
 
-        portOnePaymentClient.cancel(payment.getPaymentId());
+        return new PaymentCancelResult(payment.getId(), payment.getReservation().getId(), payment.getPaymentId());
+    }
+
+    public void requestPaymentCancel(PaymentCancelResult payment) {
+        portOnePaymentClient.cancel(payment.paymentId());
+    }
+
+    @Transactional
+    public void markPaymentCancelled(Long paymentPk) {
+        Payment payment = paymentRepository.findById(paymentPk)
+                .orElseThrow(() -> new BusinessException(PaymentErrorCode.PAYMENT_NOT_FOUND));
         payment.cancel();
         log.info("AUDIT payment cancelled. reservationId={}, paymentId={}",
-                reservation.getId(), payment.getPaymentId());
+                payment.getReservation().getId(), payment.getPaymentId());
     }
+
 }

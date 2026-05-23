@@ -297,19 +297,19 @@
 
 ## 1. 동시성 해결 방법 조사 및 적용
 
-영화 예매 서비스에서 가장 중요한 동시성 문제는 **같은 상영 회차의 동일 좌석에 대해 여러 사용자가 동시에 예약을 시도하는 상황**이다.  
+영화 예매 서비스에서 가장 중요한 동시성 문제는 **같은 상영 회차의 동일 좌석에 대해 여러 사용자가 동시에 예약을 시도하는 상황**이다.
 이번 과제에서는 이 문제를 해결하기 위해 여러 동시성 제어 방식을 비교했다.
 
 ### 1. 비관적 락 (Pessimistic Lock)
 
-비관적 락은 충돌이 자주 발생할 것이라고 가정하고, 데이터를 조회하는 시점부터 락을 걸어 다른 트랜잭션의 접근을 제한하는 방식이다.  
+비관적 락은 충돌이 자주 발생할 것이라고 가정하고, 데이터를 조회하는 시점부터 락을 걸어 다른 트랜잭션의 접근을 제한하는 방식이다.
 정합성을 강하게 보장할 수 있다는 장점이 있지만, 락 범위가 넓어질수록 대기 시간이 길어지고 처리량이 줄어들 수 있다.
 
-이 방식은 **이미 DB에 존재하는 row**를 기준으로 적용할 수 있다.  
+이 방식은 **이미 DB에 존재하는 row**를 기준으로 적용할 수 있다.
 따라서 경쟁이 치열하고, 충돌 가능성이 높으며, 데이터 정합성이 매우 중요한 경우에 적합하다.
 
-이번 과제에서 고민한 방식은 `reserve()` 메서드 내에서 `schedule` 조회 시점에 비관적 락을 거는 방법이었다.  
-하지만 이 경우 동일한 `schedule`에 대한 예약 요청 전체가 직렬화된다. 즉, 같은 상영 회차 안에서 서로 다른 좌석을 예약하는 요청도 함께 대기하게 된다.  
+이번 과제에서 고민한 방식은 `reserve()` 메서드 내에서 `schedule` 조회 시점에 비관적 락을 거는 방법이었다.
+하지만 이 경우 동일한 `schedule`에 대한 예약 요청 전체가 직렬화된다. 즉, 같은 상영 회차 안에서 서로 다른 좌석을 예약하는 요청도 함께 대기하게 된다.
 정합성은 확보할 수 있지만, **좌석 단위가 아니라 스케줄 단위로 경쟁을 묶어버린다는 점에서 락 범위가 너무 넓다**고 판단했다.
 
 | 항목 | 내용 |
@@ -321,10 +321,10 @@
 
 ### 2. 낙관적 락 (Optimistic Lock)
 
-낙관적 락은 충돌이 자주 발생하지 않는다고 가정하고, 실제 저장 시점에 버전 정보를 비교하여 충돌 여부를 판단하는 방식이다.  
+낙관적 락은 충돌이 자주 발생하지 않는다고 가정하고, 실제 저장 시점에 버전 정보를 비교하여 충돌 여부를 판단하는 방식이다.
 평상시에는 성능상 이점이 있지만, 충돌이 발생했을 때 재시도 로직이 필요하다.
 
-즉, **읽기 비중이 높고 충돌 빈도가 상대적으로 낮은 환경**에서는 적합하지만, 좌석 예매처럼 같은 자원에 대한 동시 요청이 자주 몰릴 수 있는 상황에서는 재시도 비용이 커질 수 있다.  
+즉, **읽기 비중이 높고 충돌 빈도가 상대적으로 낮은 환경**에서는 적합하지만, 좌석 예매처럼 같은 자원에 대한 동시 요청이 자주 몰릴 수 있는 상황에서는 재시도 비용이 커질 수 있다.
 특히 영화 예매는 인기 상영 시간대나 인기 좌석으로 요청이 집중될 수 있어, 현재 문제를 해결하는 핵심 방식으로는 적합도가 낮다고 판단했다.
 
 | 항목 | 내용 |
@@ -336,14 +336,14 @@
 
 ### 3. DB 유니크 제약조건 (Unique Constraint)
 
-DB 차원에서 중복 데이터를 허용하지 않도록 제약조건을 설정하는 방식이다.  
+DB 차원에서 중복 데이터를 허용하지 않도록 제약조건을 설정하는 방식이다.
 이번 과제에서는 `(schedule_id, seat_row, seat_col)` 조합에 유니크 제약조건을 두어, 동일한 상영 회차의 동일 좌석이 중복 저장되지 않도록 했다.
 
-이 방식은 구현이 비교적 단순하고, 애플리케이션 로직과 무관하게 DB가 최종적으로 데이터 무결성을 보장한다는 장점이 있다.  
-다만 애플리케이션 레벨에서 경쟁을 미리 제어하는 것이 아니라, **실제로 insert를 시도한 뒤에야 예외가 발생한다**는 한계가 있다.  
+이 방식은 구현이 비교적 단순하고, 애플리케이션 로직과 무관하게 DB가 최종적으로 데이터 무결성을 보장한다는 장점이 있다.
+다만 애플리케이션 레벨에서 경쟁을 미리 제어하는 것이 아니라, **실제로 insert를 시도한 뒤에야 예외가 발생한다**는 한계가 있다.
 즉, 이미 커넥션과 쿼리 비용이 발생한 이후라는 점에서 사전 제어 방식보다는 비효율적일 수 있다.
 
-그럼에도 불구하고 이번 과제 범위에서는 구현 난이도와 실용성을 모두 고려했을 때 가장 현실적인 방식이라고 판단했다.  
+그럼에도 불구하고 이번 과제 범위에서는 구현 난이도와 실용성을 모두 고려했을 때 가장 현실적인 방식이라고 판단했다.
 현재 좌석 선점 로직은 이 유니크 제약조건을 기반으로 중복 예약을 방지하고, 충돌 시 `DataIntegrityViolationException`을 비즈니스 예외로 변환해 처리하고 있다.
 
 | 항목 | 내용 |
@@ -355,14 +355,14 @@ DB 차원에서 중복 데이터를 허용하지 않도록 제약조건을 설�
 
 ### 4. Redis 분산 락
 
-Redis를 이용하면 DB row가 없어도 좌석별 key를 기준으로 락을 걸 수 있다.  
+Redis를 이용하면 DB row가 없어도 좌석별 key를 기준으로 락을 걸 수 있다.
 예를 들어 `schedule:{scheduleId}:seat:{seatRow}:{seatCol}` 같은 key를 사용하면, 좌석 단위로 세밀하게 락을 제어할 수 있다.
 
-이 방식의 가장 큰 장점은 **아직 DB에 존재하지 않는 예약 대상에도 락을 걸 수 있다**는 점이다.  
-즉, 현재처럼 `reserved_seat`가 예약 시점에 새로 생성되는 구조에서도 좌석 단위 경쟁을 자연스럽게 제어할 수 있다.  
+이 방식의 가장 큰 장점은 **아직 DB에 존재하지 않는 예약 대상에도 락을 걸 수 있다**는 점이다.
+즉, 현재처럼 `reserved_seat`가 예약 시점에 새로 생성되는 구조에서도 좌석 단위 경쟁을 자연스럽게 제어할 수 있다.
 또한 `schedule` 전체가 아니라 좌석 단위로 락을 걸 수 있어, 같은 상영 회차 내에서도 서로 다른 좌석 예약 요청은 병렬로 처리할 수 있다.
 
-다만 Redis 도입, 락 해제 처리, TTL 설정, 장애 상황 대응 등 운영 복잡도가 커진다.  
+다만 Redis 도입, 락 해제 처리, TTL 설정, 장애 상황 대응 등 운영 복잡도가 커진다.
 이번 과제에서는 학습 및 구현 범위를 고려해 도입을 보류했지만, **장기적으로 실제 서비스 수준으로 확장한다면 가장 먼저 고려할 방식**이라고 판단했다.
 
 | 항목 | 내용 |
@@ -374,7 +374,7 @@ Redis를 이용하면 DB row가 없어도 좌석별 key를 기준으로 락을 �
 
 ### 현재 적용한 방식과 판단
 
-이번 과제에서는 **DB 유니크 제약조건을 활용해 동일 상영 회차의 동일 좌석 중복 예약을 방지**하고 있다.  
+이번 과제에서는 **DB 유니크 제약조건을 활용해 동일 상영 회차의 동일 좌석 중복 예약을 방지**하고 있다.
 이 방식은 애플리케이션 단계에서 미리 경쟁을 제어하지는 못하지만, 최소한의 구현으로도 데이터 무결성을 보장할 수 있다는 장점이 있다.
 
 정리하면 현재 판단은 다음과 같다.
@@ -387,13 +387,13 @@ Redis를 이용하면 DB row가 없어도 좌석별 key를 기준으로 락을 �
 
 ## 2. Feign Client / Http Client 장단점 조사
 
-외부 결제 서버(PortOne)와 통신하기 위해 사용할 수 있는 HTTP 클라이언트 방식도 함께 정리했다.  
-Spring 환경에서 많이 사용하는 방식은 `Feign Client`, `RestClient`, `WebClient`, 그리고 보다 저수준의 `HttpClient` 계열로 나눌 수 있다.  
+외부 결제 서버(PortOne)와 통신하기 위해 사용할 수 있는 HTTP 클라이언트 방식도 함께 정리했다.
+Spring 환경에서 많이 사용하는 방식은 `Feign Client`, `RestClient`, `WebClient`, 그리고 보다 저수준의 `HttpClient` 계열로 나눌 수 있다.
 각 방식의 특징과 장단점은 다음과 같다.
 
 ### 1. Feign Client
 
-Feign Client는 선언형 HTTP 클라이언트로, 인터페이스에 메서드와 어노테이션을 정의하면 구현체를 자동으로 생성해 주는 방식이다.  
+Feign Client는 선언형 HTTP 클라이언트로, 인터페이스에 메서드와 어노테이션을 정의하면 구현체를 자동으로 생성해 주는 방식이다.
 코드가 간결하고, 외부 API 명세를 인터페이스 형태로 분리할 수 있어 가독성이 좋다.
 
 반면 세부 요청/응답 제어가 필요할 때는 설정이 많아질 수 있고, 실제 요청이 추상화되어 보여 디버깅이 다소 불편할 수 있다.
@@ -406,7 +406,7 @@ Feign Client는 선언형 HTTP 클라이언트로, 인터페이스에 메서드�
 
 ### 2. RestClient
 
-`RestClient`는 Spring 6부터 제공되는 동기식 HTTP 클라이언트로, 기존 `RestTemplate`보다 현대적인 API를 제공한다.  
+`RestClient`는 Spring 6부터 제공되는 동기식 HTTP 클라이언트로, 기존 `RestTemplate`보다 현대적인 API를 제공한다.
 요청 URL, 헤더, 바디, 응답 파싱 과정을 코드에서 명시적으로 확인할 수 있어 흐름을 이해하기 쉽다.
 
 요청과 응답 흐름이 코드에 직접 드러나기 때문에, 예외 처리나 응답 파싱을 세밀하게 다루기 좋다.
@@ -419,7 +419,7 @@ Feign Client는 선언형 HTTP 클라이언트로, 인터페이스에 메서드�
 
 ### 3. WebClient
 
-`WebClient`는 비동기/논블로킹 기반의 HTTP 클라이언트다.  
+`WebClient`는 비동기/논블로킹 기반의 HTTP 클라이언트다.
 대량의 외부 요청을 효율적으로 처리하거나, 반응형 프로그래밍이 필요한 환경에서 강점을 가진다.
 
 반면 동기식 MVC 구조에서는 코드 복잡도가 증가할 수 있고, 프로젝트 전반이 반응형 구조가 아닐 경우 장점을 충분히 활용하기 어렵다.
@@ -432,7 +432,7 @@ Feign Client는 선언형 HTTP 클라이언트로, 인터페이스에 메서드�
 
 ### 4. HttpClient (저수준 클라이언트)
 
-Java 기본 `HttpClient`나 Apache HttpClient 같은 저수준 HTTP 클라이언트는 요청과 응답을 가장 세밀하게 제어할 수 있다.  
+Java 기본 `HttpClient`나 Apache HttpClient 같은 저수준 HTTP 클라이언트는 요청과 응답을 가장 세밀하게 제어할 수 있다.
 반면 Spring 애플리케이션에서 사용하는 경우, 예외 처리, 직렬화/역직렬화, 공통 설정 등을 직접 더 많이 관리해야 한다.
 
 | 항목 | 내용 |
@@ -642,7 +642,7 @@ k6를 사용해 두 가지 부하테스트를 진행했습니다.
 
 ### 1. 적용 내용
 
-영화/극장 조회 API는 반복 호출될 가능성이 높고, 데이터 변경 빈도는 상대적으로 낮다고 판단했습니다.  
+영화/극장 조회 API는 반복 호출될 가능성이 높고, 데이터 변경 빈도는 상대적으로 낮다고 판단했습니다.
 특히 전체 목록 조회와 상세 조회는 같은 요청이 여러 번 들어올 수 있기 때문에, 매번 DB를 조회하는 대신 Redis 캐시를 두는 것이 더 효율적이라고 보았습니다.
 
 이번 프로젝트에서는 다음 조회 기능에 캐싱을 적용했습니다.
@@ -674,7 +674,7 @@ public MovieResponse findMovieById(Long id) {
 
 캐싱 전략은 `Look-aside(Cache-aside)` 방식을 기준으로 적용했습니다.
 
-이 방식은 애플리케이션이 먼저 캐시를 확인하고, 캐시에 값이 없을 때만 DB를 조회한 뒤 결과를 캐시에 저장하는 구조입니다.  
+이 방식은 애플리케이션이 먼저 캐시를 확인하고, 캐시에 값이 없을 때만 DB를 조회한 뒤 결과를 캐시에 저장하는 구조입니다.
 이번 프로젝트에서는 Spring Cache의 `@Cacheable`을 사용해, Redis 조회/저장 로직을 직접 작성하지 않고 Spring의 캐시 추상화를 활용했습니다.
 
 영화 상세 조회 기준 흐름은 다음과 같습니다.
@@ -780,7 +780,7 @@ public record MovieResponse(
 ) { }
 ```
 
-타입 정보가 충분히 포함되지 않아 캐시 hit 시 Redis 값을 다시 DTO로 복원하는 과정에서 문제가 발생했습니다.  
+타입 정보가 충분히 포함되지 않아 캐시 hit 시 Redis 값을 다시 DTO로 복원하는 과정에서 문제가 발생했습니다.
 이를 해결하기 위해 `ObjectMapper`에 타입 정보를 포함하도록 설정했고, `JavaTimeModule`도 함께 등록해 `LocalDate`와 같은 시간 타입까지 안정적으로 처리하도록 구성했습니다.
 
 ```java
@@ -805,7 +805,7 @@ docker exec -it spring-redis redis-cli monitor
 ```
 <img width="737" height="245" alt="Image" src="https://github.com/user-attachments/assets/ac8efff8-9d4b-4fb9-9073-7ff759fde1ba" />
 
-영화 상세 조회 API를 처음 호출했을 때는 `GET` 후 `SET`이 발생했고, 같은 API를 다시 호출했을 때는 `GET`만 발생했습니다.  
+영화 상세 조회 API를 처음 호출했을 때는 `GET` 후 `SET`이 발생했고, 같은 API를 다시 호출했을 때는 `GET`만 발생했습니다.
 즉 첫 번째 요청에서는 DB 조회 후 Redis에 캐시가 저장되었고, 두 번째 요청부터는 Redis 캐시를 사용한다는 것을 확인할 수 있었습니다.
 
 ---
@@ -958,5 +958,300 @@ AUDIT payment succeeded. reservationId=3, paymentId=pay_123, provider=PORTONE
 실제로 AOP 로그에는 request body나 token 값을 남기지 않고, `method`, `uri`, `handler`, `durationMs` 정도만 남기도록 구성했습니다.
 
 ---
+
+</details>
+
+---
+
+<details>
+<summary><strong>8주차 미션 관련 내용 정리</strong></summary>
+
+<br />
+
+## 1. 트랜잭션 전파 속성 조사
+
+Spring의 `@Transactional`은 `propagation` 옵션을 통해 현재 트랜잭션이 존재할 때 새 메서드가 어떤 방식으로 트랜잭션에 참여할지 결정할 수 있습니다.
+
+| 전파 속성 | 설명 | 사용 예시 |
+| --- | --- | --- |
+| `REQUIRED` | 기존 트랜잭션이 있으면 참여하고, 없으면 새로 생성한다. 기본값이다. | 일반적인 서비스 계층의 저장/수정 로직 |
+| `REQUIRES_NEW` | 항상 새로운 트랜잭션을 생성한다. 기존 트랜잭션은 잠시 중단된다. | 감사 로그 저장, 실패 이력 저장처럼 본 작업과 독립적으로 커밋해야 하는 로직 |
+| `SUPPORTS` | 기존 트랜잭션이 있으면 참여하고, 없으면 트랜잭션 없이 실행한다. | 트랜잭션이 필수는 아닌 조회 로직 |
+| `NOT_SUPPORTED` | 트랜잭션 없이 실행한다. 기존 트랜잭션이 있으면 잠시 중단한다. | 외부 API 호출, 긴 네트워크 I/O |
+| `MANDATORY` | 반드시 기존 트랜잭션이 있어야 한다. 없으면 예외가 발생한다. | 상위 서비스 트랜잭션 내부에서만 호출되어야 하는 내부 메서드 |
+| `NEVER` | 트랜잭션이 있으면 예외가 발생한다. | 트랜잭션 안에서 실행되면 안 되는 작업 |
+| `NESTED` | 기존 트랜잭션 내부에 savepoint를 만들고 중첩 트랜잭션처럼 동작한다. | 일부 작업만 롤백하고 전체 트랜잭션은 유지해야 하는 경우 |
+
+이번 개선에서는 외부 결제 API 호출을 DB 트랜잭션 밖으로 분리하기 위해 `NOT_SUPPORTED`를 사용했고, DB 상태 변경 구간은 `TransactionTemplate`으로 필요한 부분만 짧게 트랜잭션 처리했습니다.
+
+---
+
+## 2. CGV 서비스 트랜잭션 분석 및 개선
+
+### 기존 문제
+
+기존 예매 결제 흐름은 `ReservationService.pay()`에서 하나의 `@Transactional` 안에 예약 검증, 결제 생성, 외부 결제 API 호출, 예약 확정이 모두 포함되어 있었습니다.
+
+```java
+@Transactional
+public PaymentResponse pay(Long userId, Long reservationId) {
+    Reservation reservation = getOwnedReservation(userId, reservationId);
+    validateReservationPayable(reservation);
+
+    PaymentResponse response = paymentService.payReservation(...);
+    reservation.confirm();
+    return response;
+}
+```
+
+예매 취소 흐름도 `ReservationService.cancel()`의 트랜잭션 안에서 외부 환불 API를 호출하고 있었습니다.
+
+```java
+@Transactional
+public void cancel(Long userId, Long reservationId) {
+    Reservation reservation = getOwnedReservation(userId, reservationId);
+    reservation.cancel();
+    paymentService.cancelReservationPayment(reservation);
+    reservedSeatRepository.deleteByReservation(reservation);
+}
+```
+
+이 구조는 다음 문제가 있습니다.
+
+- 외부 결제 API 응답이 늦어지면 DB 트랜잭션과 커넥션이 오래 점유된다.
+- 외부 결제는 성공했지만 DB 커밋이 실패하면 결제 상태와 예약 상태가 불일치할 수 있다.
+- 외부 API는 DB 트랜잭션으로 롤백할 수 없기 때문에 트랜잭션 범위에 포함하는 것이 적절하지 않다.
+
+### 개선 방향
+
+결제와 취소 메서드에 `Propagation.NOT_SUPPORTED`를 적용하여 전체 메서드는 트랜잭션 없이 실행되도록 변경했습니다.
+
+```java
+@Transactional(propagation = Propagation.NOT_SUPPORTED)
+public PaymentResponse pay(Long userId, Long reservationId) {
+    PaymentReadyResult payment = transactionTemplate.execute(status -> preparePayment(userId, reservationId));
+
+    try {
+        PaymentResponse response = paymentService.requestPayment(payment);
+        transactionTemplate.executeWithoutResult(status -> completePayment(userId, payment, response));
+        return response;
+    } catch (BusinessException e) {
+        transactionTemplate.executeWithoutResult(status -> paymentService.markPaymentFailed(payment.paymentPk(), e));
+        throw e;
+    }
+}
+```
+
+결제 흐름은 다음처럼 분리했습니다.
+
+1. `preparePayment()`
+   짧은 트랜잭션 안에서 예약 검증, 결제 금액 계산, `Payment READY` 저장을 처리한다.
+2. `requestPayment()`
+   트랜잭션 밖에서 외부 결제 API를 호출한다.
+3. `completePayment()`
+   짧은 트랜잭션 안에서 `Payment PAID` 처리와 `Reservation RESERVED` 처리를 수행한다.
+4. 외부 결제 실패 시
+   짧은 트랜잭션 안에서 `Payment FAILED`로 변경한다.
+
+취소 흐름도 같은 방식으로 분리했습니다.
+
+```java
+@Transactional(propagation = Propagation.NOT_SUPPORTED)
+public void cancel(Long userId, Long reservationId) {
+    PaymentCancelResult payment = transactionTemplate.execute(status -> prepareCancel(userId, reservationId));
+
+    if (payment != null) {
+        paymentService.requestPaymentCancel(payment);
+        transactionTemplate.executeWithoutResult(status -> completeCancel(userId, reservationId, payment));
+    }
+}
+```
+
+취소 흐름은 다음처럼 변경했습니다.
+
+1. `prepareCancel()`
+   짧은 트랜잭션 안에서 본인 예약과 결제 상태를 확인한다.
+2. `requestPaymentCancel()`
+   트랜잭션 밖에서 외부 환불 API를 호출한다.
+3. `completeCancel()`
+   짧은 트랜잭션 안에서 `Payment CANCELLED`, `Reservation CANCELLED`, 예약 좌석 삭제를 처리한다.
+
+이렇게 변경하면서 외부 API 호출로 인해 DB 트랜잭션이 길어지는 문제를 줄이고, DB 상태 변경 구간을 명확하게 나눌 수 있었습니다.
+
+---
+
+## 3. 인덱스 종류 조사
+
+| 인덱스 종류 | 특징 | 예시 |
+| --- | --- | --- |
+| 단일 컬럼 인덱스 | 하나의 컬럼을 기준으로 검색을 빠르게 한다. | `movie(title)` |
+| 복합 인덱스 | 여러 컬럼을 조합해 검색을 빠르게 한다. 컬럼 순서가 중요하다. | `reservation(status, expires_at)` |
+| 유니크 인덱스 | 중복을 방지하면서 조회 성능도 높인다. | `payment(payment_id)` |
+| 커버링 인덱스 | 쿼리에 필요한 컬럼을 인덱스만으로 모두 처리할 수 있어 테이블 접근을 줄인다. | `reservation(status, expires_at, res_id)` |
+| 클러스터드 인덱스 | 실제 데이터가 인덱스 순서에 맞게 저장된다. MySQL InnoDB에서는 PK가 클러스터드 인덱스다. | `PRIMARY KEY` |
+| 세컨더리 인덱스 | PK 외에 추가로 생성하는 보조 인덱스다. 세컨더리 인덱스는 PK 값을 함께 들고 있다. | `reserved_seat(res_id)` |
+| Full-text 인덱스 | 긴 문자열에서 자연어 검색을 빠르게 하기 위한 인덱스다. | 영화 제목/줄거리 검색 |
+| 해시 인덱스 | 동등 비교에 강하지만 범위 검색에는 적합하지 않다. | `key = value` 형태의 조회 |
+
+복합 인덱스는 왼쪽 컬럼부터 순서대로 활용됩니다. 예를 들어 `(schedule_id, seat_row, seat_col)` 인덱스는 `schedule_id` 조건이 있을 때 효율적으로 사용할 수 있지만, `seat_col`만 조건으로 주는 쿼리에는 효과가 제한적입니다.
+
+---
+
+## 4. 성능 최적화
+
+이번 최적화는 현재 서비스에서 실제로 사용 중인 Repository 메서드를 기준으로 최소한의 인덱스를 적용했습니다.
+
+### 4-1. 만료 예약 조회 최적화
+
+예약 만료 스케줄러는 결제 대기 상태이면서 만료 시간이 지난 예약을 조회합니다.
+
+```java
+List<Reservation> findAllByStatusAndExpiresAtBefore(
+        ReservationStatus status,
+        LocalDateTime time
+);
+```
+
+실행 계획 확인 쿼리는 다음과 같습니다.
+
+```sql
+EXPLAIN ANALYZE
+SELECT *
+FROM reservation
+WHERE status = 'PENDING_PAYMENT'
+  AND expires_at < NOW();
+```
+
+적용한 인덱스는 다음과 같습니다.
+
+```java
+@Table(indexes = {
+        @Index(name = "idx_reservation_status_expires_at", columnList = "status, expires_at")
+})
+public class Reservation extends BaseEntity {
+}
+```
+
+`status`는 동등 조건이고 `expires_at`은 범위 조건이므로 `(status, expires_at)` 순서의 복합 인덱스를 적용했습니다. 이를 통해 전체 예약 테이블을 스캔하지 않고 결제 대기 상태의 만료 예약 범위만 탐색할 수 있습니다.
+
+---
+
+### 4-2. 좌석 중복 조회 최적화
+
+예매 생성 시 같은 상영 일정의 같은 좌석이 이미 선점되었는지 확인합니다.
+
+```java
+boolean existsByScheduleIdAndSeatRowAndSeatCol(
+        Long scheduleId,
+        String seatRow,
+        int seatCol
+);
+```
+
+실행 계획 확인 쿼리는 다음과 같습니다.
+
+```sql
+EXPLAIN ANALYZE
+SELECT 1
+FROM reserved_seat
+WHERE schedule_id = 1
+  AND seat_row = 'A'
+  AND seat_col = 1
+LIMIT 1;
+```
+
+기존 유니크 제약은 좌석 컬럼이 먼저 오는 순서였습니다.
+
+```java
+@UniqueConstraint(
+        name = "uk_reserved_seat_per_schedule",
+        columnNames = {"seat_row", "seat_col", "schedule_id"}
+)
+```
+
+하지만 실제 조회 조건은 `schedule_id`를 먼저 기준으로 사용하므로, 다음처럼 인덱스 순서를 변경했습니다.
+
+```java
+@UniqueConstraint(
+        name = "uk_reserved_seat_per_schedule",
+        columnNames = {"schedule_id", "seat_row", "seat_col"}
+)
+```
+
+이 인덱스는 좌석 중복 방지 역할을 유지하면서, 특정 상영 일정에서 특정 좌석을 찾는 조회에도 더 적합합니다.
+
+---
+
+### 4-3. 예매 좌석 count/delete 최적화
+
+결제 금액 계산 시 예매에 포함된 좌석 수를 조회하고, 예약 취소나 만료 시 해당 예약의 좌석을 삭제합니다.
+
+```java
+long countByReservationId(Long reservationId);
+
+void deleteByReservation(Reservation reservation);
+```
+
+실행 계획 확인 쿼리는 다음과 같습니다.
+
+```sql
+EXPLAIN ANALYZE
+SELECT COUNT(*)
+FROM reserved_seat
+WHERE res_id = 1;
+```
+
+```sql
+EXPLAIN ANALYZE
+DELETE FROM reserved_seat
+WHERE res_id = 1;
+```
+
+적용한 인덱스는 다음과 같습니다.
+
+```java
+@Table(
+        indexes = {
+                @Index(name = "idx_reserved_seat_reservation_id", columnList = "res_id")
+        }
+)
+public class ReservedSeat extends BaseEntity {
+}
+```
+
+`reserved_seat`는 좌석 단위로 데이터가 쌓이기 때문에 예약 ID 기준의 count/delete가 반복되면 전체 스캔 비용이 커질 수 있습니다. `res_id` 인덱스를 추가해 특정 예약에 연결된 좌석만 빠르게 찾도록 개선했습니다.
+
+---
+
+### 추가 최적화. 매점 재고 조회 최적화
+
+매점 주문 시 영화관과 상품 기준으로 재고를 조회합니다.
+
+```java
+Optional<StoreInventory> findByTheaterIdAndItemId(Long theaterId, Long itemId);
+```
+
+실행 계획 확인 쿼리는 다음과 같습니다.
+
+```sql
+EXPLAIN ANALYZE
+SELECT *
+FROM store_inventory
+WHERE theater_id = 1
+  AND item_id = 1;
+```
+
+적용한 인덱스는 다음과 같습니다.
+
+```java
+@Table(indexes = {
+        @Index(name = "idx_store_inventory_theater_item", columnList = "theater_id, item_id")
+})
+public class StoreInventory extends BaseEntity {
+}
+```
+
+영화관별 재고를 상품 단위로 조회하는 패턴이 명확하므로 `(theater_id, item_id)` 복합 인덱스를 적용했습니다.
+
 
 </details>
